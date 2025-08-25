@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Page, TestItem, Review, Issue } from '@/types'
+import { createClient } from '@/lib/supabase/client'
 
 interface PageTestStatus {
   pageId: string
@@ -101,28 +102,118 @@ const standardTestItems: TestItem[] = [
 export default function TestingPanel({ page, onStatusUpdate, currentStatus }: TestingPanelProps) {
   const [reviews, setReviews] = useState<Review[]>([])
   const [issues, setIssues] = useState<Issue[]>([])
+  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
 
-  const handleReviewChange = (testItemId: string, status: Review['status']) => {
-    const existingReviewIndex = reviews.findIndex(r => r.testItemId === testItemId && r.pageId === page.id)
-    
-    if (existingReviewIndex >= 0) {
-      const updatedReviews = [...reviews]
-      updatedReviews[existingReviewIndex] = {
-        ...updatedReviews[existingReviewIndex],
-        status,
-        updatedAt: new Date()
+  // Load existing test results from database
+  useEffect(() => {
+    loadTestResults()
+  }, [page.id])
+
+  const loadTestResults = async () => {
+    setLoading(true)
+    try {
+      // Load test results for this page
+      const { data: testResults, error } = await supabase
+        .from('test_results')
+        .select('*')
+        .eq('page_id', page.id)
+
+      if (error) throw error
+
+      // Convert database test results to reviews
+      if (testResults) {
+        const loadedReviews: Review[] = testResults.map(result => ({
+          id: result.id,
+          pageId: result.page_id,
+          testItemId: result.test_type,
+          status: result.status as 'ok' | 'not-ok',
+          createdAt: new Date(result.created_at),
+          updatedAt: new Date(result.updated_at)
+        }))
+        setReviews(loadedReviews)
       }
-      setReviews(updatedReviews)
-    } else {
-      const newReview: Review = {
-        id: `${page.id}-${testItemId}`,
-        pageId: page.id,
-        testItemId,
-        status,
-        createdAt: new Date(),
-        updatedAt: new Date()
+
+      // Load issues for this page
+      const { data: issuesData, error: issuesError } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('page_id', page.id)
+
+      if (!issuesError && issuesData) {
+        const loadedIssues: Issue[] = issuesData.map(issue => ({
+          id: issue.id,
+          reviewId: issue.page_id,
+          section: issue.title,
+          title: issue.title,
+          description: issue.description || '',
+          suggestedFix: '',
+          priority: issue.priority as 'high' | 'medium' | 'low',
+          category: 'functional',
+          createdAt: new Date(issue.created_at)
+        }))
+        setIssues(loadedIssues)
       }
-      setReviews([...reviews, newReview])
+    } catch (error) {
+      console.error('Error loading test results:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleReviewChange = async (testItemId: string, status: Review['status']) => {
+    try {
+      // Check if test result already exists
+      const existingReview = reviews.find(r => r.testItemId === testItemId && r.pageId === page.id)
+      
+      if (existingReview) {
+        // Update existing test result
+        const { error } = await supabase
+          .from('test_results')
+          .update({
+            status,
+            notes: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingReview.id)
+
+        if (error) throw error
+
+        // Update local state
+        const updatedReviews = reviews.map(r => 
+          r.id === existingReview.id 
+            ? { ...r, status, updatedAt: new Date() }
+            : r
+        )
+        setReviews(updatedReviews)
+      } else {
+        // Create new test result
+        const { data, error } = await supabase
+          .from('test_results')
+          .insert({
+            page_id: page.id,
+            test_type: testItemId,
+            status,
+            notes: null
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+
+        // Add to local state
+        const newReview: Review = {
+          id: data.id,
+          pageId: page.id,
+          testItemId,
+          status,
+          createdAt: new Date(data.created_at),
+          updatedAt: new Date(data.updated_at)
+        }
+        setReviews([...reviews, newReview])
+      }
+    } catch (error) {
+      console.error('Error saving test result:', error)
     }
 
     // Map test item to grid column and notify parent
@@ -156,14 +247,34 @@ export default function TestingPanel({ page, onStatusUpdate, currentStatus }: Te
     }
   }
 
-  const handleIssueAdd = (reviewId: string, issueData: Omit<Issue, 'id' | 'reviewId' | 'createdAt'>) => {
-    const newIssue: Issue = {
-      id: `${reviewId}-${Date.now()}`,
-      reviewId,
-      ...issueData,
-      createdAt: new Date()
+  const handleIssueAdd = async (reviewId: string, issueData: Omit<Issue, 'id' | 'reviewId' | 'createdAt'>) => {
+    try {
+      // Save issue to database
+      const { data, error } = await supabase
+        .from('issues')
+        .insert({
+          page_id: page.id,
+          title: issueData.title,
+          description: issueData.description,
+          priority: issueData.priority,
+          status: 'open'
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Add to local state
+      const newIssue: Issue = {
+        id: data.id,
+        reviewId,
+        ...issueData,
+        createdAt: new Date(data.created_at)
+      }
+      setIssues([...issues, newIssue])
+    } catch (error) {
+      console.error('Error saving issue:', error)
     }
-    setIssues([...issues, newIssue])
   }
 
   const getReviewForTest = (testItemId: string) => {
@@ -172,6 +283,14 @@ export default function TestingPanel({ page, onStatusUpdate, currentStatus }: Te
 
   const getIssuesForReview = (reviewId: string) => {
     return issues.filter(issue => issue.reviewId === reviewId)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-gray-500">Loading test results...</div>
+      </div>
+    )
   }
 
   return (

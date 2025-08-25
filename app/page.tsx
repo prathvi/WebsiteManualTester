@@ -194,7 +194,9 @@ export default function Home() {
               onAddWebsite={() => setShowAddWebsite(true)}
             />
             <div className="flex items-center gap-2">
-              {/* Additional header controls can go here */}
+              {project && (
+                <ExportButton project={project} pages={pages} />
+              )}
             </div>
           </div>
         </div>

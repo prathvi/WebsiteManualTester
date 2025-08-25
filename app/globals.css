@@ -119,12 +119,29 @@
   font-size: 11px;
 }
 
+.excel-cell.editable {
+  @apply cursor-text;
+}
+
+.excel-cell-editing {
+  @apply p-1;
+}
+
 .excel-header {
   @apply bg-muted font-semibold text-foreground;
 }
 
 .excel-selected {
   @apply bg-accent ring-2 ring-primary;
+}
+
+/* Editable cell indicators */
+.excel-cell .edit-icon {
+  @apply opacity-0 transition-opacity duration-150;
+}
+
+.excel-cell:hover .edit-icon {
+  @apply opacity-100;
 }
 
 .excel-ribbon {

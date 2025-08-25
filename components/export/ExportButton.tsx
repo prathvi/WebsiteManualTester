@@ -1,192 +1,240 @@
 'use client'
 
-import { useRef } from 'react'
+import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { Project, Page, Review, Issue, ExportData } from '@/types'
+import { Project, Page } from '@/types'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Download, FileSpreadsheet, FileJson, FileText, Loader2, CheckCircle } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useWebsite } from '@/contexts/WebsiteContext'
 
 interface ExportButtonProps {
   project: Project
   pages: Page[]
-  // In a real implementation, you'd pass reviews and issues from state
 }
 
 export default function ExportButton({ project, pages }: ExportButtonProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [exportFormat, setExportFormat] = useState<'excel' | 'json' | 'csv' | null>(null)
+  const supabase = createClient()
+  const { currentWebsite } = useWebsite()
 
-  const handleExport = () => {
-    // In a real implementation, you'd get reviews and issues from your state management
-    // For now, we'll create a mock export with sample data
-    const exportData: ExportData = {
-      project,
-      pages,
-      reviews: [
-        {
-          id: '1',
-          pageId: '1',
-          testItemId: 'visual-1',
-          status: 'ok',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: '2',
-          pageId: '1',
-          testItemId: 'visual-2',
-          status: 'not-ok',
-          comments: 'Text colors do not match design',
-          priority: 'high',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      ],
-      issues: [
-        {
-          id: '1',
-          reviewId: '2',
-          section: 'Header',
-          title: 'Incorrect text color in navigation',
-          description: 'Navigation text color should be #333 but is currently #666',
-          suggestedFix: 'Update CSS to use correct color code',
-          priority: 'high',
-          category: 'visual',
-          createdAt: new Date()
-        }
-      ]
+  const fetchTestData = async () => {
+    if (!currentWebsite) return { testResults: [], issues: [] }
+
+    try {
+      // Fetch all test results for this website's pages
+      const pageIds = pages.map(p => p.id)
+      
+      const { data: testResults } = await supabase
+        .from('test_results')
+        .select('*')
+        .in('page_id', pageIds)
+
+      const { data: issues } = await supabase
+        .from('issues')
+        .select('*')
+        .in('page_id', pageIds)
+
+      return {
+        testResults: testResults || [],
+        issues: issues || []
+      }
+    } catch (error) {
+      console.error('Error fetching test data:', error)
+      return { testResults: [], issues: [] }
     }
-
-    exportToExcel(exportData)
   }
 
-  const exportToExcel = (data: ExportData) => {
-    // Create workbook
+  const handleExport = async (format: 'excel' | 'json' | 'csv') => {
+    setIsExporting(true)
+    setExportFormat(format)
+    
+    try {
+      // Fetch test results and issues from database
+      const { testResults, issues } = await fetchTestData()
+
+      const exportData = {
+        project,
+        pages,
+        testResults,
+        issues,
+        exportDate: new Date()
+      }
+
+      switch (format) {
+        case 'excel':
+          await exportToExcel(exportData)
+          break
+        case 'json':
+          await exportToJSON(exportData)
+          break
+        case 'csv':
+          await exportToCSV(exportData)
+          break
+      }
+
+      setShowSuccess(true)
+      setTimeout(() => {
+        setShowSuccess(false)
+        setExportFormat(null)
+      }, 2000)
+    } catch (error) {
+      console.error('Export failed:', error)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const exportToExcel = async (data: any) => {
     const workbook = XLSX.utils.book_new()
 
     // Project Summary Sheet
-    const projectSheetData = [
-      ['Project Name', data.project.name],
+    const summaryData = [
+      ['Website Test Report'],
+      [],
+      ['Website Name', data.project.name],
       ['Base URL', data.project.baseUrl],
-      ['Created At', data.project.createdAt.toLocaleDateString()],
+      ['Export Date', new Date().toLocaleString()],
+      [],
+      ['Statistics'],
       ['Total Pages', data.pages.length],
-      ['Total Reviews', data.reviews.length],
-      ['Total Issues', data.issues.length]
+      ['Total Tests Run', data.testResults.length],
+      ['Tests Passed', data.testResults.filter((r: any) => r.status === 'ok').length],
+      ['Tests Failed', data.testResults.filter((r: any) => r.status === 'not-ok').length],
+      ['Total Issues', data.issues.length],
+      ['High Priority Issues', data.issues.filter((i: any) => i.priority === 'high').length],
+      ['Medium Priority Issues', data.issues.filter((i: any) => i.priority === 'medium').length],
+      ['Low Priority Issues', data.issues.filter((i: any) => i.priority === 'low').length]
     ]
-    const projectSheet = XLSX.utils.aoa_to_sheet(projectSheetData)
-    XLSX.utils.book_append_sheet(workbook, projectSheet, 'Project Summary')
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
 
     // Pages Sheet
-    const pagesSheetData = [
-      ['Page ID', 'Title', 'URL', 'Order', 'Created At'],
-      ...data.pages.map(page => [
-        page.id,
-        page.title,
-        page.url,
-        page.order,
-        page.createdAt.toLocaleDateString()
-      ])
+    const pagesData = [
+      ['Page Title', 'URL', 'Test Status', 'Issues Count'],
+      ...data.pages.map((page: Page) => {
+        const pageTests = data.testResults.filter((r: any) => r.page_id === page.id)
+        const pageIssues = data.issues.filter((i: any) => i.page_id === page.id)
+        const hasFailedTests = pageTests.some((t: any) => t.status === 'not-ok')
+        
+        return [
+          page.title,
+          page.url,
+          hasFailedTests ? 'Failed' : pageTests.length > 0 ? 'Passed' : 'Not Tested',
+          pageIssues.length
+        ]
+      })
     ]
-    const pagesSheet = XLSX.utils.aoa_to_sheet(pagesSheetData)
+    const pagesSheet = XLSX.utils.aoa_to_sheet(pagesData)
     XLSX.utils.book_append_sheet(workbook, pagesSheet, 'Pages')
 
-    // Reviews Sheet with color coding
-    const reviewsSheetData = [
-      ['Review ID', 'Page', 'Test Item', 'Status', 'Priority', 'Comments', 'Created At', 'Updated At'],
-      ...data.reviews.map(review => {
-        const page = data.pages.find(p => p.id === review.pageId)
-        const testItem = getTestItemName(review.testItemId)
-        
+    // Test Results Sheet
+    const testResultsData = [
+      ['Page', 'Test Type', 'Status', 'Notes', 'Last Updated'],
+      ...data.testResults.map((result: any) => {
+        const page = data.pages.find((p: Page) => p.id === result.page_id)
         return [
-          review.id,
           page?.title || 'Unknown',
-          testItem,
-          review.status,
-          review.priority || '',
-          review.comments || '',
-          review.createdAt.toLocaleDateString(),
-          review.updatedAt.toLocaleDateString()
+          formatTestType(result.test_type),
+          result.status.toUpperCase(),
+          result.notes || '',
+          new Date(result.updated_at).toLocaleString()
         ]
       })
     ]
-    const reviewsSheet = XLSX.utils.aoa_to_sheet(reviewsSheetData)
-    
-    // Add color coding for status
-    reviewsSheetData.forEach((row, rowIndex) => {
-      if (rowIndex > 0) { // Skip header row
-        const status = row[3] as string
-        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: 3 })
-        
-        if (status === 'ok') {
-          reviewsSheet[cellAddress].s = {
-            fill: { fgColor: { rgb: 'FFE8F5E8' } },
-            font: { color: { rgb: 'FF2E7D32' } }
-          }
-        } else if (status === 'not-ok') {
-          reviewsSheet[cellAddress].s = {
-            fill: { fgColor: { rgb: 'FFFFEBEE' } },
-            font: { color: { rgb: 'FFC62828' } }
-          }
-        }
-      }
-    })
-    
-    XLSX.utils.book_append_sheet(workbook, reviewsSheet, 'Reviews')
+    const testResultsSheet = XLSX.utils.aoa_to_sheet(testResultsData)
+    XLSX.utils.book_append_sheet(workbook, testResultsSheet, 'Test Results')
 
-    // Issues Sheet with priority color coding
-    const issuesSheetData = [
-      ['Issue ID', 'Page', 'Section', 'Title', 'Description', 'Suggested Fix', 'Priority', 'Category', 'Created At'],
-      ...data.issues.map(issue => {
-        const review = data.reviews.find(r => r.id === issue.reviewId)
-        const page = review ? data.pages.find(p => p.id === review.pageId) : null
-        
+    // Issues Sheet
+    const issuesData = [
+      ['Page', 'Issue Title', 'Description', 'Priority', 'Status', 'Created Date'],
+      ...data.issues.map((issue: any) => {
+        const page = data.pages.find((p: Page) => p.id === issue.page_id)
         return [
-          issue.id,
           page?.title || 'Unknown',
-          issue.section,
           issue.title,
-          issue.description,
-          issue.suggestedFix || '',
-          issue.priority,
-          issue.category,
-          issue.createdAt.toLocaleDateString()
+          issue.description || '',
+          (issue.priority || 'medium').toUpperCase(),
+          (issue.status || 'open').toUpperCase(),
+          new Date(issue.created_at).toLocaleString()
         ]
       })
     ]
-    const issuesSheet = XLSX.utils.aoa_to_sheet(issuesSheetData)
-    
-    // Add color coding for priority
-    issuesSheetData.forEach((row, rowIndex) => {
-      if (rowIndex > 0) { // Skip header row
-        const priority = row[6] as string
-        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: 6 })
-        
-        if (priority === 'high') {
-          issuesSheet[cellAddress].s = {
-            fill: { fgColor: { rgb: 'FFFFEBEE' } },
-            font: { color: { rgb: 'FFC62828' } }
-          }
-        } else if (priority === 'medium') {
-          issuesSheet[cellAddress].s = {
-            fill: { fgColor: { rgb: 'FFFFF8E1' } },
-            font: { color: { rgb: 'FFEF6C00' } }
-          }
-        } else if (priority === 'low') {
-          issuesSheet[cellAddress].s = {
-            fill: { fgColor: { rgb: 'FFE3F2FD' } },
-            font: { color: { rgb: 'FF1565C0' } }
-          }
-        }
-      }
-    })
-    
+    const issuesSheet = XLSX.utils.aoa_to_sheet(issuesData)
     XLSX.utils.book_append_sheet(workbook, issuesSheet, 'Issues')
 
-    // Export workbook
-    const fileName = `website-test-report-${data.project.name.replace(/\s+/g, '-').toLowerCase()}.xlsx`
+    // Save file
+    const fileName = `${data.project.name.replace(/\s+/g, '-').toLowerCase()}-test-report-${new Date().toISOString().split('T')[0]}.xlsx`
     XLSX.writeFile(workbook, fileName)
   }
 
-  const getTestItemName = (testItemId: string): string => {
-    // This would come from your standard test items definition
-    const testItems: Record<string, string> = {
+  const exportToJSON = async (data: any) => {
+    const jsonString = JSON.stringify(data, null, 2)
+    const blob = new Blob([jsonString], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const fileName = `${data.project.name.replace(/\s+/g, '-').toLowerCase()}-test-report-${new Date().toISOString().split('T')[0]}.json`
+    
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const exportToCSV = async (data: any) => {
+    // Create CSV content for issues
+    const csvRows = [
+      ['Page Title', 'Page URL', 'Issue Title', 'Description', 'Priority', 'Status'],
+      ...data.issues.map((issue: any) => {
+        const page = data.pages.find((p: Page) => p.id === issue.page_id)
+        return [
+          page?.title || 'Unknown',
+          page?.url || '',
+          issue.title,
+          issue.description || '',
+          issue.priority || 'medium',
+          issue.status || 'open'
+        ]
+      })
+    ]
+
+    const csvContent = csvRows.map(row => 
+      row.map((cell: string) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const fileName = `${data.project.name.replace(/\s+/g, '-').toLowerCase()}-issues-${new Date().toISOString().split('T')[0]}.csv`
+    
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const formatTestType = (testType: string): string => {
+    const testTypeMap: Record<string, string> = {
       'visual-1': 'Images Loading',
       'visual-2': 'Text Colors',
       'visual-3': 'Font Styles',
@@ -198,38 +246,69 @@ export default function ExportButton({ project, pages }: ExportButtonProps) {
       'functional-4': 'Button Functionality',
       'functional-5': 'Error Handling'
     }
-    return testItems[testItemId] || testItemId
+    return testTypeMap[testType] || testType
   }
 
   return (
-    <div className="space-y-4">
-      <button
-        onClick={handleExport}
-        className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        Export to Excel
-      </button>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem 
+            onClick={() => handleExport('excel')}
+            disabled={isExporting}
+            className="gap-2"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export as Excel
+          </DropdownMenuItem>
+          <DropdownMenuItem 
+            onClick={() => handleExport('csv')}
+            disabled={isExporting}
+            className="gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Export as CSV
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem 
+            onClick={() => handleExport('json')}
+            disabled={isExporting}
+            className="gap-2"
+          >
+            <FileJson className="h-4 w-4" />
+            Export as JSON
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      <div className="text-sm text-gray-600">
-        <p>The export will include:</p>
-        <ul className="list-disc list-inside mt-1">
-          <li>Project summary with basic information</li>
-          <li>List of all pages from the sitemap</li>
-          <li>Review results with status color coding</li>
-          <li>Detailed issues with priority levels</li>
-        </ul>
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        className="hidden"
-        onChange={() => {}}
-      />
-    </div>
+      <Dialog open={isExporting || showSuccess} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {showSuccess ? 'Export Complete' : 'Exporting Report'}
+            </DialogTitle>
+            <DialogDescription>
+              {showSuccess 
+                ? `Your test report has been exported successfully.`
+                : `Preparing your ${exportFormat?.toUpperCase()} report...`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-6">
+            {showSuccess ? (
+              <CheckCircle className="h-12 w-12 text-green-600 animate-in zoom-in-50" />
+            ) : (
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

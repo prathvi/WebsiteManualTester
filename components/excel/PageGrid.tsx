@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Page } from '@/types'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Edit2, Check, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useWebsite } from '@/contexts/WebsiteContext'
 
 interface PageTestStatus {
   pageId: string
@@ -26,9 +28,20 @@ interface PageGridProps {
   pageStatuses?: Record<string, PageTestStatus>
 }
 
+interface EditingCell {
+  pageId: string
+  field: 'title' | 'url'
+  value: string
+}
+
 export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerPage = {}, pageStatuses = {} }: PageGridProps) {
   const [selectedCell, setSelectedCell] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+  const { refreshPages } = useWebsite()
   const itemsPerPage = 20
 
   const totalPages = Math.ceil(pages.length / itemsPerPage)
@@ -49,11 +62,66 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
     { key: 'issues', header: 'Issues', width: 'w-20' }
   ]
 
+  useEffect(() => {
+    if (editingCell && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editingCell])
+
   const handleCellClick = (pageId: string, columnKey: string) => {
     setSelectedCell(`${pageId}-${columnKey}`)
     const page = pages.find(p => p.id === pageId)
     if (page) {
       onPageSelect(page)
+    }
+  }
+
+  const handleEditStart = (pageId: string, field: 'title' | 'url', currentValue: string) => {
+    setEditingCell({ pageId, field, value: currentValue })
+    setEditValue(currentValue)
+  }
+
+  const handleEditCancel = () => {
+    setEditingCell(null)
+    setEditValue('')
+  }
+
+  const handleEditSave = async () => {
+    if (!editingCell || !editValue.trim()) {
+      handleEditCancel()
+      return
+    }
+
+    try {
+      // Update in database
+      const { error } = await supabase
+        .from('pages')
+        .update({
+          [editingCell.field]: editValue.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingCell.pageId)
+
+      if (error) throw error
+
+      // Refresh pages from database
+      await refreshPages()
+      
+      // Clear editing state
+      setEditingCell(null)
+      setEditValue('')
+    } catch (error) {
+      console.error('Error updating page:', error)
+      // Keep editing mode open on error
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleEditSave()
+    } else if (e.key === 'Escape') {
+      handleEditCancel()
     }
   }
 
@@ -64,9 +132,8 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
       case 'order':
         return page.order + 1
       case 'title':
-        return page.title
       case 'url':
-        return page.url
+        return page[columnKey]
       case 'loading':
         return getStatusIcon(pageStatus?.loading || 'pending')
       case 'images':
@@ -154,19 +221,74 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
             selectedPage?.id === page.id ? 'bg-accent/50' : ''
           }`}
         >
-          {columns.map((column) => (
-            <div
-              key={`${page.id}-${column.key}`}
-              className={`excel-cell ${column.width} ${
-                selectedCell === `${page.id}-${column.key}` ? 'excel-selected' : ''
-              } cursor-pointer hover:bg-accent/30 ${
-                getCellStatusClass(page.id, column.key)
-              }`}
-              onClick={() => handleCellClick(page.id, column.key)}
-            >
-              {getCellValue(page, column.key)}
-            </div>
-          ))}
+          {columns.map((column) => {
+            const isEditing = editingCell?.pageId === page.id && editingCell?.field === column.key
+            const isEditable = column.key === 'title' || column.key === 'url'
+            
+            return (
+              <div
+                key={`${page.id}-${column.key}`}
+                className={`excel-cell ${column.width} ${
+                  selectedCell === `${page.id}-${column.key}` ? 'excel-selected' : ''
+                } cursor-pointer hover:bg-accent/30 ${
+                  getCellStatusClass(page.id, column.key)
+                } ${isEditable ? 'group relative' : ''}`}
+                onClick={() => !isEditing && handleCellClick(page.id, column.key)}
+                onDoubleClick={() => {
+                  if (isEditable && !isEditing) {
+                    handleEditStart(page.id, column.key as 'title' | 'url', getCellValue(page, column.key) as string)
+                  }
+                }}
+              >
+                {isEditing ? (
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 px-1 py-0 bg-background border border-primary rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEditSave()
+                      }}
+                      className="p-0.5 hover:bg-accent rounded"
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEditCancel()
+                      }}
+                      className="p-0.5 hover:bg-accent rounded"
+                    >
+                      <X className="h-3 w-3 text-red-600" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="truncate">{getCellValue(page, column.key)}</span>
+                    {isEditable && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditStart(page.id, column.key as 'title' | 'url', getCellValue(page, column.key) as string)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-accent rounded transition-opacity"
+                      >
+                        <Edit2 className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       ))}
 
