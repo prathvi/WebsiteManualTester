@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import SitemapInput from '@/components/sitemap/SitemapInput'
-import PageList from '@/components/sitemap/PageList'
+import Ribbon from '@/components/excel/Ribbon'
+import PageGrid from '@/components/excel/PageGrid'
+import FormulaBar from '@/components/excel/FormulaBar'
+import StatusBar from '@/components/excel/StatusBar'
 import TestingPanel from '@/components/testing/TestingPanel'
 import ExportButton from '@/components/export/ExportButton'
 import { Page, Project } from '@/types'
@@ -11,6 +13,7 @@ export default function Home() {
   const [project, setProject] = useState<Project | null>(null)
   const [pages, setPages] = useState<Page[]>([])
   const [selectedPage, setSelectedPage] = useState<Page | null>(null)
+  const [showTestingPanel, setShowTestingPanel] = useState(false)
 
   const handleSitemapLoaded = (loadedPages: Page[], baseUrl: string) => {
     const newProject: Project = {
@@ -30,51 +33,76 @@ export default function Home() {
 
   const handlePageSelect = (page: Page) => {
     setSelectedPage(page)
+    setShowTestingPanel(true)
   }
 
-  return (
-    <div className="space-y-8">
-      {/* Project Setup Section */}
-      <section className="bg-card rounded-lg shadow p-4 md:p-6">
-        <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
-          Project Setup
-        </h2>
-        <SitemapInput onSitemapLoaded={handleSitemapLoaded} />
-      </section>
+  const handleAddIssue = (issueData: { title: string; description: string; priority: string }) => {
+    console.log('Adding issue:', issueData, 'for page:', selectedPage?.title)
+    // In a real implementation, this would save to the database
+  }
 
-      {/* Pages List Section */}
-      {pages.length > 0 && (
-        <section className="bg-card rounded-lg shadow p-4 md:p-6">
-          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
-            Pages to Test ({pages.length})
-          </h2>
-          <PageList
+  const handleExport = () => {
+    // This would trigger the export functionality
+    console.log('Export triggered')
+  }
+
+  const handleImport = () => {
+    // This would trigger import functionality
+    console.log('Import triggered')
+  }
+
+  const completedPages = pages.filter(page =>
+    // Simulate completed pages - in real app, this would come from reviews
+    Math.random() > 0.7
+  ).length
+
+  const totalIssues = Math.floor(pages.length * 0.3) // Simulated issues count
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      {/* Ribbon */}
+      <Ribbon onImport={handleImport} onExport={handleExport} onSettings={() => {}} />
+      
+      {/* Formula Bar */}
+      <FormulaBar selectedPage={selectedPage} onAddIssue={handleAddIssue} />
+      
+      {/* Main Content - Grid and Testing Panel */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Panel - Page Grid */}
+        <div className="flex-1 overflow-auto">
+          <PageGrid
             pages={pages}
             selectedPage={selectedPage}
             onPageSelect={handlePageSelect}
           />
-        </section>
-      )}
-
-      {/* Testing Section */}
-      {selectedPage && (
-        <section className="bg-card rounded-lg shadow p-4 md:p-6">
-          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
-            Testing: {selectedPage.title}
-          </h2>
-          <TestingPanel page={selectedPage} />
-        </section>
-      )}
-
-      {/* Export Section */}
-      {project && pages.length > 0 && (
-        <section className="bg-card rounded-lg shadow p-4 md:p-6">
-          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
-            Export Results
-          </h2>
-          <ExportButton project={project} pages={pages} />
-        </section>
-      )}
+        </div>
+        
+        {/* Right Panel - Testing (Collapsible) */}
+        {showTestingPanel && selectedPage && (
+          <div className="w-96 border-l border-border overflow-auto">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Testing: {selectedPage.title}</h3>
+                <button
+                  onClick={() => setShowTestingPanel(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ×
+                </button>
+              </div>
+              <TestingPanel page={selectedPage} />
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Status Bar */}
+      <StatusBar
+        totalPages={pages.length}
+        completedPages={completedPages}
+        totalIssues={totalIssues}
+        selectedPage={selectedPage?.title || null}
+      />
     </div>
   )
 }
