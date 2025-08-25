@@ -19,12 +19,26 @@ interface Issue {
   createdAt: Date
 }
 
+interface PageTestStatus {
+  pageId: string
+  loading: 'ok' | 'not-ok' | 'pending'
+  images: 'ok' | 'not-ok' | 'pending'
+  colors: 'ok' | 'not-ok' | 'pending'
+  fonts: 'ok' | 'not-ok' | 'pending'
+  layout: 'ok' | 'not-ok' | 'pending'
+  navigation: 'ok' | 'not-ok' | 'pending'
+  forms: 'ok' | 'not-ok' | 'pending'
+  buttons: 'ok' | 'not-ok' | 'pending'
+  overall: 'ok' | 'not-ok' | 'pending'
+}
+
 export default function Home() {
   const [project, setProject] = useState<Project | null>(null)
   const [pages, setPages] = useState<Page[]>([])
   const [selectedPage, setSelectedPage] = useState<Page | null>(null)
   const [showTestingPanel, setShowTestingPanel] = useState(false)
   const [issues, setIssues] = useState<Issue[]>([])
+  const [pageStatuses, setPageStatuses] = useState<Record<string, PageTestStatus>>({})
 
   const handleSitemapLoaded = (loadedPages: Page[], baseUrl: string) => {
     const newProject: Project = {
@@ -45,6 +59,46 @@ export default function Home() {
   const handlePageSelect = (page: Page) => {
     setSelectedPage(page)
     setShowTestingPanel(true)
+  }
+  
+  const handleStatusUpdate = (pageId: string, testType: string, status: 'ok' | 'not-ok') => {
+    setPageStatuses(prev => {
+      const currentStatus = prev[pageId] || {
+        pageId,
+        loading: 'pending',
+        images: 'pending',
+        colors: 'pending',
+        fonts: 'pending',
+        layout: 'pending',
+        navigation: 'pending',
+        forms: 'pending',
+        buttons: 'pending',
+        overall: 'pending'
+      }
+      
+      const updatedStatus = {
+        ...currentStatus,
+        [testType]: status
+      }
+      
+      // Calculate overall status
+      const statuses = Object.values(updatedStatus).filter(v => typeof v === 'string' && v !== 'pending')
+      const hasNotOk = statuses.includes('not-ok')
+      const hasOk = statuses.includes('ok')
+      
+      if (hasNotOk) {
+        updatedStatus.overall = 'not-ok'
+      } else if (hasOk && statuses.length >= 5) {
+        updatedStatus.overall = 'ok'
+      } else {
+        updatedStatus.overall = 'pending'
+      }
+      
+      return {
+        ...prev,
+        [pageId]: updatedStatus
+      }
+    })
   }
 
   const handleAddIssue = (issueData: { title: string; description: string; priority: string }) => {
@@ -117,6 +171,7 @@ export default function Home() {
             selectedPage={selectedPage}
             onPageSelect={handlePageSelect}
             issuesPerPage={issuesPerPage}
+            pageStatuses={pageStatuses}
           />
         </div>
         
@@ -133,7 +188,11 @@ export default function Home() {
                   ×
                 </button>
               </div>
-              <TestingPanel page={selectedPage} />
+              <TestingPanel 
+                page={selectedPage} 
+                onStatusUpdate={(testType, status) => handleStatusUpdate(selectedPage.id, testType, status)}
+                currentStatus={pageStatuses[selectedPage.id]}
+              />
             </div>
           </div>
         )}

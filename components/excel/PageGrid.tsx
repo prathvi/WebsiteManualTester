@@ -5,14 +5,28 @@ import { Page } from '@/types'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
+interface PageTestStatus {
+  pageId: string
+  loading: 'ok' | 'not-ok' | 'pending'
+  images: 'ok' | 'not-ok' | 'pending'
+  colors: 'ok' | 'not-ok' | 'pending'
+  fonts: 'ok' | 'not-ok' | 'pending'
+  layout: 'ok' | 'not-ok' | 'pending'
+  navigation: 'ok' | 'not-ok' | 'pending'
+  forms: 'ok' | 'not-ok' | 'pending'
+  buttons: 'ok' | 'not-ok' | 'pending'
+  overall: 'ok' | 'not-ok' | 'pending'
+}
+
 interface PageGridProps {
   pages: Page[]
   selectedPage: Page | null
   onPageSelect: (page: Page) => void
   issuesPerPage?: Record<string, number>
+  pageStatuses?: Record<string, PageTestStatus>
 }
 
-export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerPage = {} }: PageGridProps) {
+export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerPage = {}, pageStatuses = {} }: PageGridProps) {
   const [selectedCell, setSelectedCell] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
@@ -44,6 +58,8 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
   }
 
   const getCellValue = (page: Page, columnKey: string) => {
+    const pageStatus = pageStatuses[page.id]
+    
     switch (columnKey) {
       case 'order':
         return page.order + 1
@@ -52,24 +68,68 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
       case 'url':
         return page.url
       case 'loading':
-        return '✓' // Loading speed check
+        return getStatusIcon(pageStatus?.loading || 'pending')
       case 'images':
-        return '✓' // Images check
+        return getStatusIcon(pageStatus?.images || 'pending')
       case 'colors':
-        return '✓' // Colors check
+        return getStatusIcon(pageStatus?.colors || 'pending')
       case 'fonts':
-        return '✓' // Fonts check
+        return getStatusIcon(pageStatus?.fonts || 'pending')
       case 'layout':
-        return '✓' // Layout check
+        return getStatusIcon(pageStatus?.layout || 'pending')
       case 'navigation':
-        return '✓' // Navigation check
+        return getStatusIcon(pageStatus?.navigation || 'pending')
       case 'status':
-        return 'Pending'
+        return getOverallStatus(pageStatus?.overall || 'pending')
       case 'issues':
         return issuesPerPage[page.id] || 0
       default:
         return ''
     }
+  }
+  
+  const getStatusIcon = (status: 'ok' | 'not-ok' | 'pending') => {
+    switch (status) {
+      case 'ok':
+        return '✓'
+      case 'not-ok':
+        return '✗'
+      case 'pending':
+      default:
+        return '-'
+    }
+  }
+  
+  const getOverallStatus = (status: 'ok' | 'not-ok' | 'pending') => {
+    switch (status) {
+      case 'ok':
+        return 'OK'
+      case 'not-ok':
+        return 'NOT OK'
+      case 'pending':
+      default:
+        return 'Pending'
+    }
+  }
+  
+  const getCellStatusClass = (pageId: string, columnKey: string) => {
+    const status = pageStatuses[pageId]
+    if (!status) return ''
+    
+    const testColumns = ['loading', 'images', 'colors', 'fonts', 'layout', 'navigation']
+    
+    if (testColumns.includes(columnKey)) {
+      const value = status[columnKey as keyof PageTestStatus]
+      if (value === 'ok') return 'text-green-600'
+      if (value === 'not-ok') return 'text-red-600'
+    }
+    
+    if (columnKey === 'status') {
+      if (status.overall === 'ok') return 'text-green-600 font-semibold'
+      if (status.overall === 'not-ok') return 'text-red-600 font-semibold'
+    }
+    
+    return ''
   }
 
   return (
@@ -99,7 +159,9 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
               key={`${page.id}-${column.key}`}
               className={`excel-cell ${column.width} ${
                 selectedCell === `${page.id}-${column.key}` ? 'excel-selected' : ''
-              } cursor-pointer hover:bg-accent/30`}
+              } cursor-pointer hover:bg-accent/30 ${
+                getCellStatusClass(page.id, column.key)
+              }`}
               onClick={() => handleCellClick(page.id, column.key)}
             >
               {getCellValue(page, column.key)}

@@ -3,8 +3,23 @@
 import { useState } from 'react'
 import { Page, TestItem, Review, Issue } from '@/types'
 
+interface PageTestStatus {
+  pageId: string
+  loading: 'ok' | 'not-ok' | 'pending'
+  images: 'ok' | 'not-ok' | 'pending'
+  colors: 'ok' | 'not-ok' | 'pending'
+  fonts: 'ok' | 'not-ok' | 'pending'
+  layout: 'ok' | 'not-ok' | 'pending'
+  navigation: 'ok' | 'not-ok' | 'pending'
+  forms: 'ok' | 'not-ok' | 'pending'
+  buttons: 'ok' | 'not-ok' | 'pending'
+  overall: 'ok' | 'not-ok' | 'pending'
+}
+
 interface TestingPanelProps {
   page: Page
+  onStatusUpdate?: (testType: string, status: 'ok' | 'not-ok') => void
+  currentStatus?: PageTestStatus
 }
 
 const standardTestItems: TestItem[] = [
@@ -83,7 +98,7 @@ const standardTestItems: TestItem[] = [
   }
 ]
 
-export default function TestingPanel({ page }: TestingPanelProps) {
+export default function TestingPanel({ page, onStatusUpdate, currentStatus }: TestingPanelProps) {
   const [reviews, setReviews] = useState<Review[]>([])
   const [issues, setIssues] = useState<Issue[]>([])
 
@@ -108,6 +123,28 @@ export default function TestingPanel({ page }: TestingPanelProps) {
         updatedAt: new Date()
       }
       setReviews([...reviews, newReview])
+    }
+
+    // Map test item to grid column and notify parent
+    if (onStatusUpdate) {
+      const testItem = standardTestItems.find(item => item.id === testItemId)
+      if (testItem) {
+        let columnKey = ''
+        
+        // Map test items to grid columns
+        if (testItem.title.includes('Loading')) columnKey = 'loading'
+        else if (testItem.title.includes('Images')) columnKey = 'images'
+        else if (testItem.title.includes('Text Colors')) columnKey = 'colors'
+        else if (testItem.title.includes('Font')) columnKey = 'fonts'
+        else if (testItem.title.includes('Layout')) columnKey = 'layout'
+        else if (testItem.title.includes('Navigation')) columnKey = 'navigation'
+        else if (testItem.title.includes('Form')) columnKey = 'forms'
+        else if (testItem.title.includes('Button')) columnKey = 'buttons'
+        
+        if (columnKey) {
+          onStatusUpdate(columnKey, status === 'ok' ? 'ok' : 'not-ok')
+        }
+      }
     }
 
     // If status is "ok", remove any related issues
