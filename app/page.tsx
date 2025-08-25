@@ -9,11 +9,22 @@ import TestingPanel from '@/components/testing/TestingPanel'
 import ExportButton from '@/components/export/ExportButton'
 import { Page, Project } from '@/types'
 
+interface Issue {
+  id: string
+  pageId: string
+  title: string
+  description: string
+  priority: 'low' | 'medium' | 'high'
+  status: 'open' | 'resolved'
+  createdAt: Date
+}
+
 export default function Home() {
   const [project, setProject] = useState<Project | null>(null)
   const [pages, setPages] = useState<Page[]>([])
   const [selectedPage, setSelectedPage] = useState<Page | null>(null)
   const [showTestingPanel, setShowTestingPanel] = useState(false)
+  const [issues, setIssues] = useState<Issue[]>([])
 
   const handleSitemapLoaded = (loadedPages: Page[], baseUrl: string) => {
     const newProject: Project = {
@@ -37,8 +48,22 @@ export default function Home() {
   }
 
   const handleAddIssue = (issueData: { title: string; description: string; priority: string }) => {
-    console.log('Adding issue:', issueData, 'for page:', selectedPage?.title)
-    // In a real implementation, this would save to the database
+    if (!selectedPage) return
+    
+    const newIssue: Issue = {
+      id: Date.now().toString(),
+      pageId: selectedPage.id,
+      title: issueData.title,
+      description: issueData.description,
+      priority: issueData.priority as 'low' | 'medium' | 'high',
+      status: 'open',
+      createdAt: new Date()
+    }
+    
+    setIssues(prev => [...prev, newIssue])
+    
+    // Show success feedback
+    console.log('Issue added:', newIssue)
   }
 
   const handleExport = () => {
@@ -46,22 +71,39 @@ export default function Home() {
     console.log('Export triggered')
   }
 
-  const handleImport = () => {
-    // This would trigger import functionality
-    console.log('Import triggered')
-  }
 
-  const completedPages = pages.filter(page =>
+  const completedPages = pages.filter(() =>
     // Simulate completed pages - in real app, this would come from reviews
     Math.random() > 0.7
   ).length
+  
+  // Calculate issues per page
+  const issuesPerPage = issues.reduce((acc, issue) => {
+    acc[issue.pageId] = (acc[issue.pageId] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
 
-  const totalIssues = Math.floor(pages.length * 0.3) // Simulated issues count
+  const totalIssues = issues.length
 
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Ribbon */}
-      <Ribbon onImport={handleImport} onExport={handleExport} onSettings={() => {}} />
+      <Ribbon 
+        onSitemapLoaded={handleSitemapLoaded} 
+        onExport={handleExport} 
+        onSettings={() => {}} 
+        onAddPage={() => {
+          const newPage: Page = {
+            id: Date.now().toString(),
+            url: project?.baseUrl ? `${project.baseUrl}/new-page-${pages.length + 1}` : `/new-page-${pages.length + 1}`,
+            title: `New Page ${pages.length + 1}`,
+            order: pages.length,
+            createdAt: new Date()
+          }
+          setPages(prev => [...prev, newPage])
+          setSelectedPage(newPage)
+        }}
+      />
       
       {/* Formula Bar */}
       <FormulaBar selectedPage={selectedPage} onAddIssue={handleAddIssue} />
@@ -74,6 +116,7 @@ export default function Home() {
             pages={pages}
             selectedPage={selectedPage}
             onPageSelect={handlePageSelect}
+            issuesPerPage={issuesPerPage}
           />
         </div>
         

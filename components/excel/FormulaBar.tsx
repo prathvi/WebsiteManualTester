@@ -12,6 +12,7 @@ export default function FormulaBar({ selectedPage, onAddIssue }: FormulaBarProps
   const [issueTitle, setIssueTitle] = useState('')
   const [issueDescription, setIssueDescription] = useState('')
   const [priority, setPriority] = useState('medium')
+  const [showSuccess, setShowSuccess] = useState(false)
 
   const handleSubmit = () => {
     if (issueTitle.trim() && selectedPage) {
@@ -23,6 +24,10 @@ export default function FormulaBar({ selectedPage, onAddIssue }: FormulaBarProps
       setIssueTitle('')
       setIssueDescription('')
       setPriority('medium')
+      
+      // Show success message
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 2000)
     }
   }
 
@@ -55,9 +60,9 @@ export default function FormulaBar({ selectedPage, onAddIssue }: FormulaBarProps
           <button
             onClick={handleSubmit}
             disabled={!issueTitle.trim() || !selectedPage}
-            className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            Add Issue
+            {showSuccess ? '✓ Added' : 'Add Issue'}
           </button>
         </div>
       </div>
