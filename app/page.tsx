@@ -35,8 +35,8 @@ export default function Home() {
   return (
     <div className="space-y-8">
       {/* Project Setup Section */}
-      <section className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+      <section className="bg-card rounded-lg shadow p-4 md:p-6">
+        <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
           Project Setup
         </h2>
         <SitemapInput onSitemapLoaded={handleSitemapLoaded} />
@@ -44,12 +44,12 @@ export default function Home() {
 
       {/* Pages List Section */}
       {pages.length > 0 && (
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <section className="bg-card rounded-lg shadow p-4 md:p-6">
+          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
             Pages to Test ({pages.length})
           </h2>
-          <PageList 
-            pages={pages} 
+          <PageList
+            pages={pages}
             selectedPage={selectedPage}
             onPageSelect={handlePageSelect}
           />
@@ -58,8 +58,8 @@ export default function Home() {
 
       {/* Testing Section */}
       {selectedPage && (
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <section className="bg-card rounded-lg shadow p-4 md:p-6">
+          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
             Testing: {selectedPage.title}
           </h2>
           <TestingPanel page={selectedPage} />
@@ -68,8 +68,8 @@ export default function Home() {
 
       {/* Export Section */}
       {project && pages.length > 0 && (
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <section className="bg-card rounded-lg shadow p-4 md:p-6">
+          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">
             Export Results
           </h2>
           <ExportButton project={project} pages={pages} />
