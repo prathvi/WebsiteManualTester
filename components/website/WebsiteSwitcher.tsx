@@ -66,10 +66,16 @@ export default function WebsiteSwitcher({
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setWebsites(data || [])
+      if (error) {
+        console.error('Failed to fetch websites:', error)
+        // Don't throw error, just set empty array
+        setWebsites([])
+      } else {
+        setWebsites(data || [])
+      }
     } catch (error) {
       console.error('Failed to fetch websites:', error)
+      setWebsites([])
     } finally {
       setLoading(false)
     }
