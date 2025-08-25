@@ -1,12 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Ribbon from '@/components/excel/Ribbon'
 import PageGrid from '@/components/excel/PageGrid'
 import FormulaBar from '@/components/excel/FormulaBar'
 import StatusBar from '@/components/excel/StatusBar'
 import TestingPanel from '@/components/testing/TestingPanel'
 import ExportButton from '@/components/export/ExportButton'
+import WebsiteSwitcher from '@/components/website/WebsiteSwitcher'
+import AddWebsiteWizard from '@/components/website/AddWebsiteWizard'
+import { useWebsite } from '@/contexts/WebsiteContext'
+import { Website, Page as DbPage } from '@/types/database'
 import { Page, Project } from '@/types'
 
 interface Issue {
@@ -33,12 +37,40 @@ interface PageTestStatus {
 }
 
 export default function Home() {
+  const { currentWebsite, setCurrentWebsite, pages: dbPages, refreshPages } = useWebsite()
+  const [showAddWebsite, setShowAddWebsite] = useState(false)
   const [project, setProject] = useState<Project | null>(null)
   const [pages, setPages] = useState<Page[]>([])
   const [selectedPage, setSelectedPage] = useState<Page | null>(null)
   const [showTestingPanel, setShowTestingPanel] = useState(false)
   const [issues, setIssues] = useState<Issue[]>([])
   const [pageStatuses, setPageStatuses] = useState<Record<string, PageTestStatus>>({})
+
+  // Convert database pages to app pages when website changes
+  useEffect(() => {
+    if (currentWebsite && dbPages.length > 0) {
+      const convertedPages: Page[] = dbPages.map(dbPage => ({
+        id: dbPage.id,
+        url: dbPage.url,
+        title: dbPage.title || 'Untitled',
+        order: dbPage.order_index,
+        createdAt: new Date(dbPage.created_at)
+      }))
+      setPages(convertedPages)
+      
+      // Set project from current website
+      setProject({
+        id: currentWebsite.id,
+        name: currentWebsite.name,
+        baseUrl: currentWebsite.base_url,
+        createdAt: new Date(currentWebsite.created_at),
+        updatedAt: new Date(currentWebsite.updated_at)
+      })
+    } else {
+      setPages([])
+      setProject(null)
+    }
+  }, [currentWebsite, dbPages])
 
   const handleSitemapLoaded = (loadedPages: Page[], baseUrl: string) => {
     const newProject: Project = {
@@ -54,6 +86,11 @@ export default function Home() {
     if (loadedPages.length > 0) {
       setSelectedPage(loadedPages[0])
     }
+  }
+
+  const handleWebsiteAdded = (website: Website) => {
+    setCurrentWebsite(website)
+    refreshPages()
   }
 
   const handlePageSelect = (page: Page) => {
@@ -140,9 +177,30 @@ export default function Home() {
   const totalIssues = issues.length
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Ribbon */}
-      <Ribbon 
+    <>
+      <AddWebsiteWizard
+        open={showAddWebsite}
+        onOpenChange={setShowAddWebsite}
+        onWebsiteAdded={handleWebsiteAdded}
+      />
+      
+      <div className="flex flex-col h-screen bg-background">
+        {/* Header with Website Switcher */}
+        <div className="border-b bg-background px-4 py-2">
+          <div className="flex items-center justify-between">
+            <WebsiteSwitcher
+              currentWebsiteId={currentWebsite?.id || null}
+              onWebsiteChange={setCurrentWebsite}
+              onAddWebsite={() => setShowAddWebsite(true)}
+            />
+            <div className="flex items-center gap-2">
+              {/* Additional header controls can go here */}
+            </div>
+          </div>
+        </div>
+        
+        {/* Ribbon */}
+        <Ribbon 
         onSitemapLoaded={handleSitemapLoaded} 
         onExport={handleExport} 
         onSettings={() => {}} 
@@ -205,6 +263,7 @@ export default function Home() {
         totalIssues={totalIssues}
         selectedPage={selectedPage?.title || null}
       />
-    </div>
+      </div>
+    </>
   )
 }
