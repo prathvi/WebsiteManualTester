@@ -12,6 +12,7 @@ import AddWebsiteWizard from '@/components/website/AddWebsiteWizard'
 import { useWebsite } from '@/contexts/WebsiteContext'
 import { Website, Page as DbPage } from '@/types/database'
 import { Page, Project } from '@/types'
+import { createClient } from '@/lib/supabase/client'
 
 interface Issue {
   id: string
@@ -66,11 +67,117 @@ export default function Home() {
         createdAt: new Date(currentWebsite.created_at),
         updatedAt: new Date(currentWebsite.updated_at)
       })
+      
+      // Load existing test results for all pages
+      loadAllTestResults(convertedPages)
     } else {
       setPages([])
       setProject(null)
+      setPageStatuses({})
     }
   }, [currentWebsite, dbPages])
+
+  const loadAllTestResults = async (pages: Page[]) => {
+    const supabase = createClient()
+    
+    try {
+      // Fetch all test results for all pages at once
+      const pageIds = pages.map(p => p.id)
+      const { data: testResults, error } = await supabase
+        .from('test_results')
+        .select('*')
+        .in('page_id', pageIds)
+
+      if (error) throw error
+
+      if (testResults && testResults.length > 0) {
+        // Group test results by page_id and build page statuses
+        const newPageStatuses: Record<string, PageTestStatus> = {}
+        
+        testResults.forEach(result => {
+          if (!newPageStatuses[result.page_id]) {
+            newPageStatuses[result.page_id] = {
+              pageId: result.page_id,
+              loading: 'pending',
+              images: 'pending',
+              colors: 'pending',
+              fonts: 'pending',
+              layout: 'pending',
+              navigation: 'pending',
+              forms: 'pending',
+              buttons: 'pending',
+              overall: 'pending'
+            }
+          }
+
+          // Map test_type to the appropriate field
+          const testTypeMapping: Record<string, keyof PageTestStatus> = {
+            'functional-1': 'loading',
+            'visual-1': 'images',
+            'visual-2': 'colors',
+            'visual-3': 'fonts',
+            'visual-4': 'layout',
+            'functional-2': 'navigation',
+            'functional-3': 'forms',
+            'functional-4': 'buttons'
+          }
+
+          const field = testTypeMapping[result.test_type]
+          if (field && field !== 'pageId' && field !== 'overall') {
+            newPageStatuses[result.page_id][field] = result.status as 'ok' | 'not-ok' | 'pending'
+          }
+        })
+
+        // Calculate overall status for each page
+        Object.values(newPageStatuses).forEach(pageStatus => {
+          const statuses = [
+            pageStatus.loading,
+            pageStatus.images,
+            pageStatus.colors,
+            pageStatus.fonts,
+            pageStatus.layout,
+            pageStatus.navigation,
+            pageStatus.forms,
+            pageStatus.buttons
+          ].filter(s => s !== 'pending')
+
+          const hasNotOk = statuses.includes('not-ok')
+          const hasOk = statuses.includes('ok')
+
+          if (hasNotOk) {
+            pageStatus.overall = 'not-ok'
+          } else if (hasOk && statuses.length >= 5) {
+            pageStatus.overall = 'ok'
+          } else {
+            pageStatus.overall = 'pending'
+          }
+        })
+
+        setPageStatuses(newPageStatuses)
+      }
+      
+      // Also load issues for all pages
+      const { data: issuesData, error: issuesError } = await supabase
+        .from('issues')
+        .select('*')
+        .in('page_id', pageIds)
+
+      if (!issuesError && issuesData) {
+        const loadedIssues: Issue[] = issuesData.map(issue => ({
+          id: issue.id,
+          pageId: issue.page_id,
+          title: issue.title,
+          description: issue.description || '',
+          priority: issue.priority as 'low' | 'medium' | 'high',
+          status: issue.status as 'open' | 'resolved',
+          createdAt: new Date(issue.created_at)
+        }))
+        setIssues(loadedIssues)
+      }
+    } catch (error) {
+      console.error('Error loading test results:', error)
+    }
+  }
 
   const handleSitemapLoaded = (loadedPages: Page[], baseUrl: string) => {
     const newProject: Project = {
