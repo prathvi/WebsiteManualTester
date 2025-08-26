@@ -218,23 +218,21 @@ export default function TestingPanel({ page, onStatusUpdate, currentStatus }: Te
 
     // Map test item to grid column and notify parent
     if (onStatusUpdate) {
-      const testItem = standardTestItems.find(item => item.id === testItemId)
-      if (testItem) {
-        let columnKey = ''
-        
-        // Map test items to grid columns
-        if (testItem.title.includes('Loading')) columnKey = 'loading'
-        else if (testItem.title.includes('Images')) columnKey = 'images'
-        else if (testItem.title.includes('Text Colors')) columnKey = 'colors'
-        else if (testItem.title.includes('Font')) columnKey = 'fonts'
-        else if (testItem.title.includes('Layout')) columnKey = 'layout'
-        else if (testItem.title.includes('Navigation')) columnKey = 'navigation'
-        else if (testItem.title.includes('Form')) columnKey = 'forms'
-        else if (testItem.title.includes('Button')) columnKey = 'buttons'
-        
-        if (columnKey) {
-          onStatusUpdate(columnKey, status === 'ok' ? 'ok' : 'not-ok')
-        }
+      // Map test IDs directly to grid column keys
+      const testIdToColumnMap: Record<string, string> = {
+        'functional-1': 'loading',     // Page Loading Speed
+        'visual-1': 'images',          // Images Loading
+        'visual-2': 'colors',          // Text Colors
+        'visual-3': 'fonts',           // Font Styles
+        'visual-4': 'layout',          // Layout Consistency
+        'functional-2': 'navigation',  // Navigation Links
+        'functional-3': 'forms',       // Form Submissions
+        'functional-4': 'buttons',     // Button Functionality
+      }
+      
+      const columnKey = testIdToColumnMap[testItemId]
+      if (columnKey) {
+        onStatusUpdate(columnKey, status === 'ok' ? 'ok' : 'not-ok')
       }
     }
 
@@ -249,16 +247,32 @@ export default function TestingPanel({ page, onStatusUpdate, currentStatus }: Te
 
   const handleIssueAdd = async (reviewId: string, issueData: Omit<Issue, 'id' | 'reviewId' | 'createdAt'>) => {
     try {
-      // Save issue to database
+      // Get the review to find the test type
+      const review = reviews.find(r => r.id === reviewId)
+      const testType = review ? review.testItemId : null
+      
+      // Save issue to database with graceful fallback for missing columns
+      const issueToInsert: any = {
+        page_id: page.id,
+        title: issueData.title,
+        description: issueData.description,
+        priority: issueData.priority,
+        status: 'open'
+      }
+      
+      // Try to include new fields if they exist
+      // These will be ignored if columns don't exist yet
+      try {
+        issueToInsert.section = issueData.section
+        issueToInsert.suggested_fix = issueData.suggestedFix
+        issueToInsert.test_type = testType
+      } catch (e) {
+        // Columns might not exist yet
+      }
+      
       const { data, error } = await supabase
         .from('issues')
-        .insert({
-          page_id: page.id,
-          title: issueData.title,
-          description: issueData.description,
-          priority: issueData.priority,
-          status: 'open'
-        })
+        .insert(issueToInsert)
         .select()
         .single()
 

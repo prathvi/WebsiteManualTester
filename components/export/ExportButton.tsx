@@ -161,16 +161,19 @@ export default function ExportButton({ project, pages }: ExportButtonProps) {
     const testResultsSheet = XLSX.utils.aoa_to_sheet(testResultsData)
     XLSX.utils.book_append_sheet(workbook, testResultsSheet, 'Test Results')
 
-    // Issues Sheet
+    // Issues Sheet with all fields
     const issuesData = [
-      ['Page', 'Issue Title', 'Description', 'Priority', 'Status', 'Created Date'],
+      ['Page', 'Test Type', 'Section', 'Priority', 'Issue Title', 'Detailed Description', 'Suggested Fix', 'Status', 'Created Date'],
       ...data.issues.map((issue: any) => {
         const page = data.pages.find((p: Page) => p.id === issue.page_id)
         return [
           page?.title || 'Unknown',
+          formatTestType(issue.test_type || ''),
+          issue.section || 'Not specified',
+          (issue.priority || 'medium').toUpperCase(),
           issue.title,
           issue.description || '',
-          (issue.priority || 'medium').toUpperCase(),
+          issue.suggested_fix || 'No suggestion provided',
           (issue.status || 'open').toUpperCase(),
           new Date(issue.created_at).toLocaleString()
         ]
@@ -179,13 +182,53 @@ export default function ExportButton({ project, pages }: ExportButtonProps) {
     const issuesSheet = XLSX.utils.aoa_to_sheet(issuesData)
     XLSX.utils.book_append_sheet(workbook, issuesSheet, 'Issues')
 
+    // Failed Tests with Issues Sheet - Comprehensive view
+    const failedTestsData = [
+      ['Page', 'Test Type', 'Test Status', 'Section', 'Priority', 'Issue Title', 'Detailed Description', 'Suggested Fix'],
+      ...data.testResults
+        .filter((result: any) => result.status === 'not-ok')
+        .map((result: any) => {
+          const page = data.pages.find((p: Page) => p.id === result.page_id)
+          const relatedIssue = data.issues.find((i: any) => 
+            i.page_id === result.page_id && i.test_type === result.test_type
+          )
+          
+          return [
+            page?.title || 'Unknown',
+            formatTestType(result.test_type),
+            'NOT OK',
+            relatedIssue?.section || '',
+            relatedIssue ? (relatedIssue.priority || 'medium').toUpperCase() : '',
+            relatedIssue?.title || 'No issue documented',
+            relatedIssue?.description || '',
+            relatedIssue?.suggested_fix || ''
+          ]
+        })
+    ]
+    const failedTestsSheet = XLSX.utils.aoa_to_sheet(failedTestsData)
+    XLSX.utils.book_append_sheet(workbook, failedTestsSheet, 'Failed Tests')
+
     // Save file
     const fileName = `${data.project.name.replace(/\s+/g, '-').toLowerCase()}-test-report-${new Date().toISOString().split('T')[0]}.xlsx`
     XLSX.writeFile(workbook, fileName)
   }
 
   const exportToJSON = async (data: any) => {
-    const jsonString = JSON.stringify(data, null, 2)
+    // Enhance the JSON export with formatted test types
+    const enhancedData = {
+      ...data,
+      issues: data.issues.map((issue: any) => ({
+        ...issue,
+        test_type_formatted: formatTestType(issue.test_type || ''),
+        page: data.pages.find((p: Page) => p.id === issue.page_id)
+      })),
+      testResults: data.testResults.map((result: any) => ({
+        ...result,
+        test_type_formatted: formatTestType(result.test_type || ''),
+        page: data.pages.find((p: Page) => p.id === result.page_id)
+      }))
+    }
+    const jsonString = JSON.stringify(enhancedData, null, 2)
     const blob = new Blob([jsonString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const fileName = `${data.project.name.replace(/\s+/g, '-').toLowerCase()}-test-report-${new Date().toISOString().split('T')[0]}.json`
@@ -200,17 +243,20 @@ export default function ExportButton({ project, pages }: ExportButtonProps) {
   }
 
   const exportToCSV = async (data: any) => {
-    // Create CSV content for issues
+    // Create CSV content for issues with all fields
     const csvRows = [
-      ['Page Title', 'Page URL', 'Issue Title', 'Description', 'Priority', 'Status'],
+      ['Page Title', 'Page URL', 'Test Type', 'Section', 'Priority', 'Issue Title', 'Detailed Description', 'Suggested Fix', 'Status'],
       ...data.issues.map((issue: any) => {
         const page = data.pages.find((p: Page) => p.id === issue.page_id)
         return [
           page?.title || 'Unknown',
           page?.url || '',
+          formatTestType(issue.test_type || ''),
+          issue.section || '',
+          issue.priority || 'medium',
           issue.title,
           issue.description || '',
-          issue.priority || 'medium',
+          issue.suggested_fix || '',
           issue.status || 'open'
         ]
       })

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Page } from '@/types'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Edit2, Check, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Edit2, Check, X, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useWebsite } from '@/contexts/WebsiteContext'
 
@@ -23,7 +23,7 @@ interface PageTestStatus {
 interface PageGridProps {
   pages: Page[]
   selectedPage: Page | null
-  onPageSelect: (page: Page) => void
+  onPageSelect: (page: Page | null) => void
   issuesPerPage?: Record<string, number>
   pageStatuses?: Record<string, PageTestStatus>
 }
@@ -49,17 +49,20 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
   const currentPages = pages.slice(startIndex, startIndex + itemsPerPage)
 
   const columns = [
-    { key: 'order', header: '#', width: 'w-12' },
-    { key: 'title', header: 'Page Title', width: 'w-48' },
-    { key: 'url', header: 'URL', width: 'w-64' },
-    { key: 'loading', header: 'Loading', width: 'w-20' },
-    { key: 'images', header: 'Images', width: 'w-20' },
-    { key: 'colors', header: 'Colors', width: 'w-20' },
-    { key: 'fonts', header: 'Fonts', width: 'w-20' },
-    { key: 'layout', header: 'Layout', width: 'w-20' },
-    { key: 'navigation', header: 'Navigation', width: 'w-24' },
-    { key: 'status', header: 'Overall', width: 'w-24' },
-    { key: 'issues', header: 'Issues', width: 'w-20' }
+    { key: 'order', header: '#', width: 50 },
+    { key: 'title', header: 'Page Title', width: 200 },
+    { key: 'url', header: 'URL', width: 300 },
+    { key: 'loading', header: 'Page Loading Speed', width: 140 },
+    { key: 'images', header: 'Images Loading', width: 120 },
+    { key: 'colors', header: 'Text Colors', width: 100 },
+    { key: 'fonts', header: 'Font Styles', width: 100 },
+    { key: 'layout', header: 'Layout Consistency', width: 140 },
+    { key: 'navigation', header: 'Navigation Links', width: 120 },
+    { key: 'forms', header: 'Form Submissions', width: 130 },
+    { key: 'buttons', header: 'Button Functionality', width: 150 },
+    { key: 'status', header: 'Overall', width: 80 },
+    { key: 'issues', header: 'Issues', width: 70 },
+    { key: 'actions', header: 'Actions', width: 80 }
   ]
 
   useEffect(() => {
@@ -85,6 +88,33 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
   const handleEditCancel = () => {
     setEditingCell(null)
     setEditValue('')
+  }
+
+  const handleDeletePage = async (pageId: string) => {
+    if (!confirm('Are you sure you want to delete this page? This will also delete all associated test results and issues.')) {
+      return
+    }
+
+    try {
+      // Delete from database (cascade will handle test_results and issues)
+      const { error } = await supabase
+        .from('pages')
+        .delete()
+        .eq('id', pageId)
+
+      if (error) throw error
+
+      // Refresh the pages list
+      await refreshPages()
+      
+      // Clear selection if deleted page was selected
+      if (selectedPage?.id === pageId) {
+        onPageSelect(null)
+      }
+    } catch (error) {
+      console.error('Error deleting page:', error)
+      alert('Failed to delete page. Please try again.')
+    }
   }
 
   const handleEditSave = async () => {
@@ -146,10 +176,16 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
         return getStatusIcon(pageStatus?.layout || 'pending')
       case 'navigation':
         return getStatusIcon(pageStatus?.navigation || 'pending')
+      case 'forms':
+        return getStatusIcon(pageStatus?.forms || 'pending')
+      case 'buttons':
+        return getStatusIcon(pageStatus?.buttons || 'pending')
       case 'status':
         return getOverallStatus(pageStatus?.overall || 'pending')
       case 'issues':
         return issuesPerPage[page.id] || 0
+      case 'actions':
+        return '' // Actions column doesn't display value, only buttons
       default:
         return ''
     }
@@ -183,7 +219,7 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
     const status = pageStatuses[pageId]
     if (!status) return ''
     
-    const testColumns = ['loading', 'images', 'colors', 'fonts', 'layout', 'navigation']
+    const testColumns = ['loading', 'images', 'colors', 'fonts', 'layout', 'navigation', 'forms', 'buttons']
     
     if (testColumns.includes(columnKey)) {
       const value = status[columnKey as keyof PageTestStatus]
@@ -199,19 +235,25 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
     return ''
   }
 
+  // Calculate total width of all columns
+  const totalWidth = columns.reduce((acc, col) => acc + col.width, 0)
+
   return (
-    <div className="excel-grid">
-      {/* Header Row */}
-      <div className="excel-row">
-        {columns.map((column) => (
-          <div
-            key={column.key}
-            className={`excel-cell excel-header ${column.width}`}
-          >
-            {column.header}
-          </div>
-        ))}
-      </div>
+    <>
+      <div className="overflow-x-auto overflow-y-hidden border border-border">
+      <div className="excel-grid" style={{ minWidth: `${totalWidth}px` }}>
+        {/* Header Row */}
+        <div className="excel-row">
+          {columns.map((column) => (
+            <div
+              key={column.key}
+              className="excel-cell excel-header"
+              style={{ width: `${column.width}px`, minWidth: `${column.width}px` }}
+            >
+              {column.header}
+            </div>
+          ))}
+        </div>
 
       {/* Data Rows */}
       {currentPages.map((page) => (
@@ -228,11 +270,12 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
             return (
               <div
                 key={`${page.id}-${column.key}`}
-                className={`excel-cell ${column.width} ${
+                className={`excel-cell ${
                   selectedCell === `${page.id}-${column.key}` ? 'excel-selected' : ''
                 } cursor-pointer hover:bg-accent/30 ${
                   getCellStatusClass(page.id, column.key)
                 } ${isEditable ? 'group relative' : ''}`}
+                style={{ width: `${column.width}px`, minWidth: `${column.width}px` }}
                 onClick={() => !isEditing && handleCellClick(page.id, column.key)}
                 onDoubleClick={() => {
                   if (isEditable && !isEditing) {
@@ -270,6 +313,19 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
                       <X className="h-3 w-3 text-red-600" />
                     </button>
                   </div>
+                ) : column.key === 'actions' ? (
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeletePage(page.id)
+                      }}
+                      className="p-1.5 hover:bg-red-50 border border-transparent hover:border-red-200 rounded transition-all group"
+                      title="Delete page"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground group-hover:text-red-600 transition-colors" />
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center justify-between w-full">
                     <span className="truncate">{getCellValue(page, column.key)}</span>
@@ -292,19 +348,21 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
         </div>
       ))}
 
-      {/* Empty state */}
-      {pages.length === 0 && (
-        <div className="excel-row">
-          <div className="excel-cell w-full text-center text-muted-foreground py-8">
-            No pages loaded. Import a sitemap to get started.
+        {/* Empty state */}
+        {pages.length === 0 && (
+          <div className="excel-row">
+            <div className="excel-cell text-center text-muted-foreground py-8" style={{ width: `${totalWidth}px` }}>
+              No pages loaded. Import a sitemap to get started.
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    </div>
 
-      {/* Pagination */}
-      {pages.length > itemsPerPage && (
-        <div className="excel-row bg-muted">
-          <div className="excel-cell w-full flex items-center justify-between p-2">
+    {/* Pagination outside of scrollable area */}
+    {pages.length > itemsPerPage && (
+        <div className="border-x border-b border-border bg-muted">
+          <div className="flex items-center justify-between p-2">
             <div className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, pages.length)} of {pages.length} pages
             </div>
@@ -332,6 +390,6 @@ export default function PageGrid({ pages, selectedPage, onPageSelect, issuesPerP
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

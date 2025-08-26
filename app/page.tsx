@@ -9,6 +9,7 @@ import TestingPanel from '@/components/testing/TestingPanel'
 import ExportButton from '@/components/export/ExportButton'
 import WebsiteSwitcher from '@/components/website/WebsiteSwitcher'
 import AddWebsiteWizard from '@/components/website/AddWebsiteWizard'
+import { ResizablePanel } from '@/components/ui/resizable-panel'
 import { useWebsite } from '@/contexts/WebsiteContext'
 import { Website, Page as DbPage } from '@/types/database'
 import { Page, Project } from '@/types'
@@ -200,9 +201,11 @@ export default function Home() {
     refreshPages()
   }
 
-  const handlePageSelect = (page: Page) => {
+  const handlePageSelect = (page: Page | null) => {
     setSelectedPage(page)
-    setShowTestingPanel(true)
+    if (page) {
+      setShowTestingPanel(true)
+    }
   }
   
   const handleStatusUpdate = (pageId: string, testType: string, status: 'ok' | 'not-ok') => {
@@ -313,16 +316,47 @@ export default function Home() {
         onSitemapLoaded={handleSitemapLoaded} 
         onExport={handleExport} 
         onSettings={() => {}} 
-        onAddPage={() => {
-          const newPage: Page = {
-            id: Date.now().toString(),
-            url: project?.baseUrl ? `${project.baseUrl}/new-page-${pages.length + 1}` : `/new-page-${pages.length + 1}`,
-            title: `New Page ${pages.length + 1}`,
-            order: pages.length,
-            createdAt: new Date()
+        onAddPage={async () => {
+          if (!currentWebsite) {
+            alert('Please select or create a website first')
+            return
           }
-          setPages(prev => [...prev, newPage])
-          setSelectedPage(newPage)
+          
+          const supabase = createClient()
+          
+          try {
+            // Create new page in database
+            const { data, error } = await supabase
+              .from('pages')
+              .insert({
+                website_id: currentWebsite.id,
+                url: currentWebsite.base_url ? `${currentWebsite.base_url}/new-page-${pages.length + 1}` : `/new-page-${pages.length + 1}`,
+                title: `New Page ${pages.length + 1}`,
+                order_index: pages.length
+              })
+              .select()
+              .single()
+            
+            if (error) throw error
+            
+            // Refresh pages to show the new page
+            await refreshPages()
+            
+            // Select the newly created page
+            if (data) {
+              const newPage: Page = {
+                id: data.id,
+                url: data.url,
+                title: data.title || 'New Page',
+                order: data.order_index,
+                createdAt: new Date(data.created_at)
+              }
+              setSelectedPage(newPage)
+            }
+          } catch (error) {
+            console.error('Error adding page:', error)
+            alert('Failed to add page. Please try again.')
+          }
         }}
       />
       
@@ -342,26 +376,21 @@ export default function Home() {
           />
         </div>
         
-        {/* Right Panel - Testing (Collapsible) */}
+        {/* Right Panel - Testing (Resizable) */}
         {showTestingPanel && selectedPage && (
-          <div className="w-96 border-l border-border overflow-auto">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Testing: {selectedPage.title}</h3>
-                <button
-                  onClick={() => setShowTestingPanel(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  ×
-                </button>
-              </div>
-              <TestingPanel 
-                page={selectedPage} 
-                onStatusUpdate={(testType, status) => handleStatusUpdate(selectedPage.id, testType, status)}
-                currentStatus={pageStatuses[selectedPage.id]}
-              />
-            </div>
-          </div>
+          <ResizablePanel
+            title={`Testing: ${selectedPage.title}`}
+            onClose={() => setShowTestingPanel(false)}
+            defaultWidth={384}
+            minWidth={300}
+            maxWidth={600}
+          >
+            <TestingPanel 
+              page={selectedPage} 
+              onStatusUpdate={(testType, status) => handleStatusUpdate(selectedPage.id, testType, status)}
+              currentStatus={pageStatuses[selectedPage.id]}
+            />
+          </ResizablePanel>
         )}
       </div>
       

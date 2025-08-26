@@ -8,7 +8,7 @@ interface RibbonProps {
   onSitemapLoaded: (pages: any[], baseUrl: string) => void
   onExport: () => void
   onSettings: () => void
-  onAddPage?: () => void
+  onAddPage?: () => void | Promise<void>
 }
 
 export default function Ribbon({ onSitemapLoaded, onExport, onSettings, onAddPage }: RibbonProps) {
