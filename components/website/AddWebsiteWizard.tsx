@@ -27,7 +27,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
   const [error, setError] = useState<string | null>(null)
   const [createdWebsite, setCreatedWebsite] = useState<Website | null>(null)
   const [importedPagesCount, setImportedPagesCount] = useState(0)
-  const [duplicateFrom, setDuplicateFrom] = useState<string>('')
+  const [duplicateFrom, setDuplicateFrom] = useState<string>('none')
   const [existingWebsites, setExistingWebsites] = useState<Website[]>([])
 
   const supabase = createClient()
@@ -58,7 +58,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
     setError(null)
     setCreatedWebsite(null)
     setImportedPagesCount(0)
-    setDuplicateFrom('')
+    setDuplicateFrom('none')
   }
 
   const handleClose = () => {
@@ -116,7 +116,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
       setCreatedWebsite(website)
 
       // If duplicating from existing website
-      if (duplicateFrom) {
+      if (duplicateFrom && duplicateFrom !== 'none') {
         // Fetch pages from the selected website
         const { data: pages, error: pagesError } = await supabase
           .from('pages')
@@ -287,7 +287,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
                     <SelectValue placeholder="Select a website to copy pages from..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Don't duplicate (start fresh)</SelectItem>
+                    <SelectItem value="none">Don't duplicate (start fresh)</SelectItem>
                     {existingWebsites.map((website) => (
                       <SelectItem key={website.id} value={website.id}>
                         <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
                 Back
               </Button>
               <div className="flex gap-2">
-                {!duplicateFrom && (
+                {duplicateFrom === 'none' && (
                   <Button
                     variant="outline"
                     onClick={() => setStep('sitemap')}
@@ -326,7 +326,7 @@ export default function AddWebsiteWizard({ open, onOpenChange, onWebsiteAdded }:
                 )}
                 <Button onClick={handleDuplicateSubmit} disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {duplicateFrom ? 'Create & Duplicate' : 'Continue'}
+                  {duplicateFrom !== 'none' ? 'Create & Duplicate' : 'Continue'}
                 </Button>
               </div>
             </div>
